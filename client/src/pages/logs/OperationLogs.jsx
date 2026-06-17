@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Table, Tag, Input, Select, Space, Card, Button } from 'antd'
+import { Table, Tag, Input, Select, Space, Card, Button, message } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import request from '../../utils/request'
 
@@ -12,37 +12,37 @@ const roleMap = {
   trainer: { text: '培训管理员', color: 'purple' }
 }
 
-const typeMap = {
-  create: { text: '创建', color: 'green' },
-  update: { text: '更新', color: 'blue' },
-  delete: { text: '删除', color: 'red' },
-  login: { text: '登录', color: 'purple' },
-  logout: { text: '注销', color: 'default' },
-  export: { text: '导出', color: 'cyan' },
-  import: { text: '导入', color: 'geekblue' },
-  approve: { text: '审批', color: 'orange' },
-  default: { text: '其他', color: 'default' }
+const getActionColor = (action) => {
+  if (action?.includes('登录') || action?.includes('退出')) return 'purple'
+  if (action?.includes('创建') || action?.includes('添加') || action?.includes('生成')) return 'green'
+  if (action?.includes('更新') || action?.includes('修改') || action?.includes('上传')) return 'blue'
+  if (action?.includes('删除') || action?.includes('取消')) return 'red'
+  if (action?.includes('审批') || action?.includes('通过') || action?.includes('拒绝')) return 'orange'
+  if (action?.includes('提交') || action?.includes('开始')) return 'cyan'
+  return 'default'
 }
 
 const moduleOptions = [
-  { value: 'users', label: '用户管理' },
-  { value: 'courses', label: '课程管理' },
-  { value: 'exams', label: '考试管理' },
-  { value: 'enrollments', label: '报名管理' },
-  { value: 'certificates', label: '证书管理' },
-  { value: 'notifications', label: '消息通知' },
-  { value: 'system', label: '系统设置' }
+  { value: '认证', label: '登录认证' },
+  { value: '课程管理', label: '课程管理' },
+  { value: '培训报名', label: '培训报名' },
+  { value: '考试管理', label: '考试管理' },
+  { value: '证书管理', label: '证书管理' },
+  { value: '统计报告', label: '统计报告' }
 ]
 
-const typeOptions = [
-  { value: 'create', label: '创建' },
-  { value: 'update', label: '更新' },
-  { value: 'delete', label: '删除' },
-  { value: 'login', label: '登录' },
-  { value: 'logout', label: '注销' },
-  { value: 'export', label: '导出' },
-  { value: 'import', label: '导入' },
-  { value: 'approve', label: '审批' }
+const actionOptions = [
+  { value: '登录', label: '登录' },
+  { value: '退出', label: '退出登录' },
+  { value: '创建', label: '创建' },
+  { value: '更新', label: '更新' },
+  { value: '删除', label: '删除' },
+  { value: '上传', label: '上传' },
+  { value: '报名', label: '报名' },
+  { value: '审批', label: '审批' },
+  { value: '开始', label: '开始考试' },
+  { value: '提交', label: '提交考试' },
+  { value: '生成', label: '生成' }
 ]
 
 const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -51,7 +51,7 @@ export default function OperationLogs() {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState([])
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
-  const [filters, setFilters] = useState({ module: '', operationType: '', keyword: '' })
+  const [filters, setFilters] = useState({ module: '', action: '', keyword: '' })
 
   useEffect(() => {
     loadData()
@@ -60,38 +60,41 @@ export default function OperationLogs() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const res = await request.get('/operation-logs', {
-        params: {
-          ...filters,
-          page: pagination.current,
-          pageSize: pagination.pageSize
-        }
-      })
+      const params = {}
+      if (filters.keyword) params.keyword = filters.keyword
+      if (filters.module) params.module = filters.module
+      if (filters.action) params.action = filters.action
+      params.page = pagination.current
+      params.pageSize = pagination.pageSize
+
+      const res = await request.get('/logs', { params })
       setData(res.data?.list || [])
       setPagination(p => ({ ...p, total: res.data?.total || 0 }))
+    } catch (e) {
+      message.error(e?.message || '加载失败')
     } finally {
       setLoading(false)
     }
   }
 
   const columns = [
-    { title: '操作时间', dataIndex: 'created_at', width: 160, sorter: true, defaultSortOrder: 'descend' },
-    { title: '操作用户', dataIndex: ['user', 'name'], width: 120 },
+    { title: '操作时间', dataIndex: 'created_at', width: 170 },
+    { title: '操作用户', dataIndex: 'username', width: 120 },
     {
       title: '角色',
-      dataIndex: ['user', 'role'],
+      dataIndex: 'role',
       width: 120,
-      render: r => <Tag color={roleMap[r]?.color}>{roleMap[r]?.text}</Tag>
+      render: r => <Tag color={roleMap[r]?.color}>{roleMap[r]?.text || r}</Tag>
     },
     {
       title: '操作类型',
-      dataIndex: 'operation_type',
-      width: 100,
-      render: t => <Tag color={typeMap[t]?.color || typeMap.default.color}>{typeMap[t]?.text || typeMap.default.text}</Tag>
+      dataIndex: 'action',
+      width: 140,
+      render: t => <Tag color={getActionColor(t)}>{t || '-'}</Tag>
     },
-    { title: '模块', dataIndex: 'module', width: 120 },
-    { title: '描述', dataIndex: 'description' },
-    { title: 'IP地址', dataIndex: 'ip', width: 140 }
+    { title: '模块', dataIndex: 'module', width: 120, render: m => m || '-' },
+    { title: '描述', dataIndex: 'description', render: d => d || '-' },
+    { title: 'IP地址', dataIndex: 'ip', width: 140, render: ip => ip || '-' }
   ]
 
   if (user.role !== 'trainer') {
@@ -118,15 +121,17 @@ export default function OperationLogs() {
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>
           <Search
-            placeholder="搜索关键词"
+            placeholder="搜索用户名/描述"
             style={{ width: 220 }}
             allowClear
+            value={filters.keyword || undefined}
             onSearch={v => setFilters(f => ({ ...f, keyword: v }))}
           />
           <Select
             placeholder="选择模块"
             style={{ width: 160 }}
             allowClear
+            value={filters.module || undefined}
             onChange={v => setFilters(f => ({ ...f, module: v }))}
           >
             {moduleOptions.map(opt => (
@@ -137,9 +142,10 @@ export default function OperationLogs() {
             placeholder="操作类型"
             style={{ width: 140 }}
             allowClear
-            onChange={v => setFilters(f => ({ ...f, operationType: v }))}
+            value={filters.action || undefined}
+            onChange={v => setFilters(f => ({ ...f, action: v }))}
           >
-            {typeOptions.map(opt => (
+            {actionOptions.map(opt => (
               <Option key={opt.value} value={opt.value}>{opt.label}</Option>
             ))}
           </Select>
@@ -151,7 +157,7 @@ export default function OperationLogs() {
           columns={columns}
           dataSource={data}
           rowKey="id"
-          scroll={{ x: 1100 }}
+          scroll={{ x: 1200 }}
           pagination={{
             ...pagination,
             showSizeChanger: true,
