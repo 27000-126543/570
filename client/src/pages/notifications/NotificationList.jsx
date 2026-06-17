@@ -10,6 +10,7 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons'
 import request from '../../utils/request'
+import eventBus from '../../utils/eventBus'
 
 const { TabPane } = Tabs
 
@@ -17,6 +18,9 @@ const typeIconMap = {
   course: <BookOutlined style={{ color: '#1890ff', fontSize: 20 }} />,
   exam: <FileTextOutlined style={{ color: '#722ed1', fontSize: 20 }} />,
   certificate: <TrophyOutlined style={{ color: '#faad14', fontSize: 20 }} />,
+  enrollment_approval: <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />,
+  enrollment_approved: <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />,
+  enrollment_rejected: <WarningOutlined style={{ color: '#fa8c16', fontSize: 20 }} />,
   approval: <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />,
   warning: <WarningOutlined style={{ color: '#fa8c16', fontSize: 20 }} />,
   system: <InfoCircleOutlined style={{ color: '#13c2c2', fontSize: 20 }} />,
@@ -33,6 +37,11 @@ export default function NotificationList() {
   const [allPagination, setAllPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [unreadCount, setUnreadCount] = useState(0)
 
+  const updateUnreadCount = (count) => {
+    setUnreadCount(count ?? 0)
+    eventBus.emit('unreadCountUpdated', count ?? 0)
+  }
+
   useEffect(() => {
     loadUnreadData()
     loadUnreadCount()
@@ -47,38 +56,48 @@ export default function NotificationList() {
   const loadUnreadCount = async () => {
     try {
       const res = await request.get('/notifications/unread-count')
-      setUnreadCount(res.data?.count || 0)
+      updateUnreadCount(res.data?.count || 0)
     } catch (e) {}
   }
 
-  const loadUnreadData = async () => {
+  const loadUnreadData = async (page = unreadPagination.current, pageSize = unreadPagination.pageSize) => {
     setUnreadLoading(true)
     try {
       const res = await request.get('/notifications', {
         params: {
           status: 'unread',
-          page: unreadPagination.current,
-          pageSize: unreadPagination.pageSize
+          page,
+          pageSize
         }
       })
       setUnreadData(res.data?.list || [])
-      setUnreadPagination(p => ({ ...p, total: res.data?.total || 0 }))
+      setUnreadPagination(p => ({ ...p, current: page, pageSize, total: res.data?.total || 0 }))
+      if (res.data?.unreadCount !== undefined) {
+        updateUnreadCount(res.data.unreadCount)
+      }
+    } catch (e) {
+      message.error(e?.message || '加载失败')
     } finally {
       setUnreadLoading(false)
     }
   }
 
-  const loadAllData = async () => {
+  const loadAllData = async (page = allPagination.current, pageSize = allPagination.pageSize) => {
     setAllLoading(true)
     try {
       const res = await request.get('/notifications', {
         params: {
-          page: allPagination.current,
-          pageSize: allPagination.pageSize
+          page,
+          pageSize
         }
       })
       setAllData(res.data?.list || [])
-      setAllPagination(p => ({ ...p, total: res.data?.total || 0 }))
+      setAllPagination(p => ({ ...p, current: page, pageSize, total: res.data?.total || 0 }))
+      if (res.data?.unreadCount !== undefined) {
+        updateUnreadCount(res.data.unreadCount)
+      }
+    } catch (e) {
+      message.error(e?.message || '加载失败')
     } finally {
       setAllLoading(false)
     }
@@ -86,31 +105,39 @@ export default function NotificationList() {
 
   const handleMarkAsRead = async (id) => {
     try {
-      await request.put(`/notifications/${id}/read`)
+      const res = await request.put(`/notifications/${id}/read`)
       message.success('已标记为已读')
+      if (res.data?.unreadCount !== undefined) {
+        updateUnreadCount(res.data.unreadCount)
+      }
       if (activeTab === 'unread') {
         loadUnreadData()
+      } else {
+        loadUnreadCount()
       }
-      loadUnreadCount()
     } catch (e) {}
   }
 
   const handleMarkAllAsRead = async () => {
     try {
-      await request.put('/notifications/read-all')
+      const res = await request.put('/notifications/read-all')
       message.success('全部已标记为已读')
+      if (res.data?.unreadCount !== undefined) {
+        updateUnreadCount(res.data.unreadCount)
+      }
       loadUnreadData()
-      loadAllData()
-      loadUnreadCount()
+      if (activeTab === 'all') {
+        loadAllData()
+      }
     } catch (e) {}
   }
 
   const renderItem = (item, isUnreadTab) => (
     <List.Item
       key={item.id}
-      onClick={() => isUnreadTab && handleMarkAsRead(item.id)}
+      onClick={() => isUnreadTab && item.status === 'unread' && handleMarkAsRead(item.id)}
       style={{
-        cursor: isUnreadTab ? 'pointer' : 'default',
+        cursor: isUnreadTab && item.status === 'unread' ? 'pointer' : 'default',
         background: item.status === 'unread' ? '#f0f8ff' : '#fff',
         borderLeft: item.status === 'unread' ? '3px solid #1890ff' : '3px solid transparent',
         paddingLeft: item.status === 'unread' ? '13px' : '16px'
@@ -133,6 +160,11 @@ export default function NotificationList() {
           </div>
         }
       />
+      {isUnreadTab && item.status === 'unread' && (
+        <Button type="link" size="small" onClick={(e) => { e.stopPropagation(); handleMarkAsRead(item.id); }}>
+          标为已读
+        </Button>
+      )}
     </List.Item>
   )
 
@@ -179,7 +211,7 @@ export default function NotificationList() {
                     showSizeChanger: true,
                     showQuickJumper: true,
                     showTotal: t => `共 ${t} 条`,
-                    onChange: (p, ps) => setUnreadPagination({ ...unreadPagination, current: p, pageSize: ps })
+                    onChange: (p, ps) => loadUnreadData(p, ps)
                   }}
                 />
               )
@@ -198,7 +230,7 @@ export default function NotificationList() {
                     showSizeChanger: true,
                     showQuickJumper: true,
                     showTotal: t => `共 ${t} 条`,
-                    onChange: (p, ps) => setAllPagination({ ...allPagination, current: p, pageSize: ps })
+                    onChange: (p, ps) => loadAllData(p, ps)
                   }}
                 />
               )

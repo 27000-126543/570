@@ -17,10 +17,18 @@ import {
   LogoutOutlined
 } from '@ant-design/icons'
 import request from '../utils/request'
+import eventBus from '../utils/eventBus'
 
 const { Header, Sider, Content } = Layout
 
-const getMenus = (role) => {
+const getMenus = (role, unreadCount) => {
+  const notificationLabel = unreadCount > 0 ? (
+    <Space>
+      消息通知
+      <Badge count={unreadCount} size="small" />
+    </Space>
+  ) : '消息通知'
+
   const allMenus = {
     employee: [
       { key: '/dashboard', icon: <DashboardOutlined />, label: '工作台' },
@@ -28,7 +36,7 @@ const getMenus = (role) => {
       { key: '/my-exams', icon: <FileTextOutlined />, label: '我的考试' },
       { key: '/my-certificates', icon: <TrophyOutlined />, label: '我的证书' },
       { key: '/my-skill-profile', icon: <ProfileOutlined />, label: '我的技能档案' },
-      { key: '/notifications', icon: <BellOutlined />, label: '消息通知' }
+      { key: '/notifications', icon: <BellOutlined />, label: notificationLabel }
     ],
     supervisor: [
       { key: '/dashboard', icon: <DashboardOutlined />, label: '工作台' },
@@ -37,7 +45,7 @@ const getMenus = (role) => {
       { key: '/exams', icon: <FileTextOutlined />, label: '考试管理' },
       { key: '/certificates', icon: <TrophyOutlined />, label: '证书管理' },
       { key: '/reports', icon: <BarChartOutlined />, label: '培训统计' },
-      { key: '/notifications', icon: <BellOutlined />, label: '消息通知' }
+      { key: '/notifications', icon: <BellOutlined />, label: notificationLabel }
     ],
     trainer: [
       { key: '/dashboard', icon: <DashboardOutlined />, label: '工作台' },
@@ -48,7 +56,7 @@ const getMenus = (role) => {
       { key: '/reports', icon: <BarChartOutlined />, label: '培训统计' },
       { key: '/users', icon: <TeamOutlined />, label: '用户管理' },
       { key: '/logs', icon: <FileSearchOutlined />, label: '操作日志' },
-      { key: '/notifications', icon: <BellOutlined />, label: '消息通知' }
+      { key: '/notifications', icon: <BellOutlined />, label: notificationLabel }
     ]
   }
   return allMenus[role] || allMenus.employee
@@ -60,7 +68,7 @@ export default function MainLayout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const user = JSON.parse(localStorage.getItem('user') || '{}')
-  const menus = getMenus(user.role)
+  const menus = getMenus(user.role, unreadCount)
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -69,9 +77,18 @@ export default function MainLayout({ onLogout }) {
         setUnreadCount(res.data?.count || 0)
       } catch (e) {}
     }
+    
+    const handleUnreadUpdate = (count) => {
+      setUnreadCount(count ?? 0)
+    }
+    
     fetchUnread()
+    eventBus.on('unreadCountUpdated', handleUnreadUpdate)
     const timer = setInterval(fetchUnread, 60000)
-    return () => clearInterval(timer)
+    return () => {
+      clearInterval(timer)
+      eventBus.off('unreadCountUpdated', handleUnreadUpdate)
+    }
   }, [])
 
   const handleLogout = async () => {
