@@ -34,18 +34,22 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
+      const safeGet = async (...args) => {
+        try { return await request.get(...args) }
+        catch (e) { return { data: {} } }
+      }
       const [coursesRes, notifsRes] = await Promise.all([
-        request.get('/courses', { params: { pageSize: 5, page: 1 } }),
-        request.get('/notifications/my', { params: { unread: 1, pageSize: 5 } })
+        safeGet('/courses', { params: { pageSize: 5, page: 1 } }),
+        safeGet('/notifications/my', { params: { unread: 1, pageSize: 5 } })
       ])
       setRecentCourses(coursesRes.data?.list || [])
       setRecentNotifs(notifsRes.data?.list || [])
 
       if (user.role === 'employee') {
         const [myCourses, myExams, myCerts] = await Promise.all([
-          request.get('/enrollments/my'),
-          request.get('/exams/records/my'),
-          request.get('/certificates/my')
+          safeGet('/enrollments/my'),
+          safeGet('/exams/records/my'),
+          safeGet('/certificates/my')
         ])
         setStats({
           courses: myCourses.data?.total || 0,
@@ -54,7 +58,7 @@ export default function Dashboard() {
           notifs: notifsRes.data?.unreadCount || 0
         })
       } else {
-        const reportsRes = await request.get('/reports/summary').catch(() => ({}))
+        const reportsRes = await safeGet('/reports/summary')
         setSummaryData(reportsRes.data)
         setStats({
           courses: coursesRes.data?.total || 0,

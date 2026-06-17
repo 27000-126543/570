@@ -11,8 +11,6 @@ const statusMap = {
   expired: { text: '过期', color: 'red' }
 }
 
-const user = JSON.parse(localStorage.getItem('user') || '{}')
-
 export default function CertificateList() {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState([])
@@ -22,6 +20,7 @@ export default function CertificateList() {
   const [filters, setFilters] = useState({ department: '', keyword: '' })
   const [generateModalVisible, setGenerateModalVisible] = useState(false)
   const [form] = Form.useForm()
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
 
   useEffect(() => {
     loadData()
@@ -59,21 +58,27 @@ export default function CertificateList() {
 
   const loadExams = async () => {
     try {
-      const res = await request.get('/exams', { params: { pageSize: 100, page: 1 } })
-      setExams(res.data?.list || [])
+      const res = await request.get('/exams/records/passed/list')
+      setExams(res.data || [])
     } catch (e) {}
   }
 
   const handleDownload = async (id) => {
     try {
+      const response = await fetch(`/api/certificates/download/${id}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('下载失败')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = `/api/certificates/download/${id}`
-      link.target = '_blank'
-      link.download = ''
+      link.href = url
+      link.download = `certificate-${id}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      message.success('开始下载')
+      window.URL.revokeObjectURL(url)
+      message.success('下载成功')
     } catch (e) {
       message.error('下载失败')
     }
@@ -82,18 +87,22 @@ export default function CertificateList() {
   const handleGenerate = async () => {
     try {
       const values = await form.validateFields()
-      await request.post('/certificates/generate', values)
-      message.success('证书生成成功')
+      const res = await request.post(`/certificates/generate/${values.examRecordId}`, {
+        expire_date: values.expireDate
+      })
+      message.success(res.message || '证书生成成功')
       setGenerateModalVisible(false)
       form.resetFields()
       loadData()
-    } catch (e) {}
+    } catch (e) {
+      message.error(e.message || '生成失败')
+    }
   }
 
   const columns = [
-    { title: '证书编号', dataIndex: 'certificate_no', width: 160 },
-    { title: '持证人', dataIndex: ['user', 'name'], width: 100 },
-    { title: '部门', dataIndex: ['user', 'department'], width: 120 },
+    { title: '证书编号', dataIndex: 'certificate_no', width: 180 },
+    { title: '持证人', dataIndex: 'user_name', width: 100 },
+    { title: '部门', dataIndex: 'department', width: 120 },
     { title: '课程名称', dataIndex: 'course_name', width: 200 },
     { title: '颁发日期', dataIndex: 'issue_date', width: 120 },
     { title: '有效期至', dataIndex: 'expire_date', width: 120, render: t => t || '长期有效' },
@@ -101,11 +110,11 @@ export default function CertificateList() {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: s => <Tag color={statusMap[s]?.color}>{statusMap[s]?.text}</Tag>
+      render: s => <Tag color={statusMap[s]?.color || 'default'}>{statusMap[s]?.text || (s === 1 || s === '1' ? '有效' : s)}</Tag>
     },
     {
       title: '操作',
-      width: 200,
+      width: 160,
       render: (_, r) => (
         <Space>
           <Button
@@ -185,14 +194,14 @@ export default function CertificateList() {
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            name="examId"
-            label="选择考试记录"
+            name="examRecordId"
+            label="选择考试记录（已通过的考试）"
             rules={[{ required: true, message: '请选择考试记录' }]}
           >
-            <Select placeholder="请选择要生成证书的考试记录">
-              {exams.filter(e => e.passed).map(exam => (
+            <Select placeholder="请选择要生成证书的考试记录" showSearch optionFilterProp="children">
+              {exams.filter(e => !e.cert_exists).map(exam => (
                 <Option key={exam.id} value={exam.id}>
-                  {exam.user?.name} - {exam.course?.name} ({exam.score}分)
+                  {exam.user_name} - {exam.course_name} ({exam.score}分) [{exam.department}]
                 </Option>
               ))}
             </Select>

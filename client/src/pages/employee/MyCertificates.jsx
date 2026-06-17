@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Tag, Button, Row, Col, message, Empty, Spin } from 'antd'
-import { DownloadOutlined, TrophyOutlined } from '@ant-design/icons'
+import { Card, Tag, Button, Row, Col, message, Empty, Spin, Space } from 'antd'
+import { DownloadOutlined, TrophyOutlined, ReloadOutlined } from '@ant-design/icons'
 import request from '../../utils/request'
 
 const statusMap = {
@@ -23,6 +23,7 @@ export default function MyCertificates() {
       const list = res.data || []
       const today = new Date()
       const processedList = list.map(item => {
+        if (!item.valid) return { ...item, status: 'expired' }
         if (item.expire_date && new Date(item.expire_date) < today) {
           return { ...item, status: 'expired' }
         }
@@ -36,15 +37,20 @@ export default function MyCertificates() {
 
   const handleDownload = async (id) => {
     try {
-      const token = localStorage.getItem('token')
+      const response = await fetch(`/api/certificates/download/${id}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('下载失败')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = `/api/certificates/download/${id}`
-      link.target = '_blank'
-      link.download = ''
+      link.href = url
+      link.download = `certificate-${id}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      message.success('开始下载')
+      window.URL.revokeObjectURL(url)
+      message.success('下载成功')
     } catch (e) {
       message.error('下载失败')
     }
@@ -69,6 +75,7 @@ export default function MyCertificates() {
     <div className="page-container">
       <div className="page-header">
         <h2 className="page-title">我的证书</h2>
+        <Button icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>
       </div>
 
       <Card>

@@ -97,6 +97,16 @@ export default function TakeExam() {
     }
   }
 
+  const isAnswered = (qid) => {
+    const v = userAnswers[qid]
+    if (v === undefined || v === null) return false
+    if (typeof v === 'string' && !v.trim()) return false
+    if (Array.isArray(v) && v.length === 0) return false
+    return true
+  }
+
+  const answeredCount = () => questions.filter(q => isAnswered(q.id)).length
+
   const handleSubmit = useCallback(async (auto = false) => {
     if (submitted) return
 
@@ -111,13 +121,13 @@ export default function TakeExam() {
     } else {
       Modal.confirm({
         title: '确认交卷',
-        content: `您已完成 ${Object.keys(userAnswers).length}/${questions.length} 题，确定要交卷吗？`,
+        content: `您已完成 ${answeredCount()}/${questions.length} 题，确定要交卷吗？`,
         okText: '确认交卷',
         cancelText: '继续答题',
         onOk: confirmSubmit
       })
     }
-  }, [submitted, userAnswers, questions.length])
+  }, [submitted, userAnswers, questions])
 
   const submitAnswers = async () => {
     try {
@@ -278,7 +288,8 @@ export default function TakeExam() {
   }
 
   if (submitted && result) {
-    const passed = result.score >= exam.pass_score
+    const passed = !!result.passed
+    const displayList = result.question_details || questions
     return (
       <div className="page-container">
         <div className="page-header">
@@ -293,7 +304,7 @@ export default function TakeExam() {
                 <div style={{ fontSize: 48, fontWeight: 'bold', color: passed ? '#52c41a' : '#ff4d4f' }}>
                   {result.score}
                 </div>
-                <div style={{ color: '#888', marginTop: 8 }}>得分 / {exam.total_score}</div>
+                <div style={{ color: '#888', marginTop: 8 }}>得分 / {result.total_score || exam.total_score}</div>
               </div>
             </Col>
             <Col md={6}>
@@ -301,7 +312,7 @@ export default function TakeExam() {
                 <div style={{ fontSize: 48, fontWeight: 'bold', color: passed ? '#52c41a' : '#ff4d4f' }}>
                   {passed ? '通过' : '未通过'}
                 </div>
-                <div style={{ color: '#888', marginTop: 8 }}>及格分：{exam.pass_score}</div>
+                <div style={{ color: '#888', marginTop: 8 }}>及格分：{result.pass_score || exam.pass_score}</div>
               </div>
             </Col>
             <Col md={6}>
@@ -324,7 +335,23 @@ export default function TakeExam() {
         </Card>
 
         <div>
-          {questions.map((q, i) => renderQuestion(q, i, true))}
+          {displayList.map((q, i) => {
+            const qu = {
+              id: q.id,
+              type: q.type,
+              question: q.question,
+              options: q.options,
+              answer: q.correct_answer,
+              score: q.score
+            }
+            const ua = { ...userAnswers }
+            if (q.user_answer !== undefined) ua[q.id] = q.user_answer
+            const oldUa = { ...userAnswers }
+            Object.assign(userAnswers, ua)
+            const node = renderQuestion(qu, i, true)
+            Object.assign(userAnswers, oldUa)
+            return node
+          })}
         </div>
       </div>
     )
@@ -403,13 +430,13 @@ export default function TakeExam() {
             {questions.map((q, i) => (
               <Button
                 key={q.id}
-                type={currentIndex === i ? 'primary' : userAnswers[q.id] ? 'default' : 'dashed'}
+                type={currentIndex === i ? 'primary' : isAnswered(q.id) ? 'default' : 'dashed'}
                 style={{
                   width: 40,
                   height: 40,
                   padding: 0,
-                  borderColor: userAnswers[q.id] ? '#52c41a' : undefined,
-                  color: userAnswers[q.id] ? '#52c41a' : undefined
+                  borderColor: isAnswered(q.id) ? '#52c41a' : undefined,
+                  color: isAnswered(q.id) ? '#52c41a' : undefined
                 }}
                 onClick={() => setCurrentIndex(i)}
               >

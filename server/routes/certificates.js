@@ -85,13 +85,14 @@ router.get('/my', authMiddleware, (req, res) => {
 });
 
 router.get('/', authMiddleware, roleMiddleware('trainer'), (req, res) => {
-  const { user_id, keyword, page = 1, pageSize = 10 } = req.query;
+  const { user_id, keyword, department, page = 1, pageSize = 10 } = req.query;
   let sql = `SELECT c.*, u.name as user_name, u.department, co.name as course_name FROM certificates c
     JOIN users u ON c.user_id = u.id
     JOIN courses co ON c.course_id = co.id
     WHERE 1=1`;
   const params = [];
   if (user_id) { sql += ' AND c.user_id = ?'; params.push(user_id); }
+  if (department) { sql += ' AND u.department = ?'; params.push(department); }
   if (keyword) {
     sql += ' AND (u.name LIKE ? OR co.name LIKE ? OR c.certificate_no LIKE ?)';
     params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
@@ -99,10 +100,14 @@ router.get('/', authMiddleware, roleMiddleware('trainer'), (req, res) => {
   sql += ' ORDER BY c.issue_date DESC LIMIT ? OFFSET ?';
   params.push(Number(pageSize), (Number(page) - 1) * Number(pageSize));
 
-  const list = db.prepare(sql).all(...params);
+  const list = db.prepare(sql).all(...params).map(c => ({
+    ...c,
+    status: !c.valid ? 'expired' : (c.expire_date && new Date(c.expire_date) < new Date() ? 'expired' : 'valid')
+  }));
   let countSql = `SELECT COUNT(*) as cnt FROM certificates c JOIN users u ON c.user_id = u.id JOIN courses co ON c.course_id = co.id WHERE 1=1`;
   const countParams = [];
   if (user_id) { countSql += ' AND c.user_id = ?'; countParams.push(user_id); }
+  if (department) { countSql += ' AND u.department = ?'; countParams.push(department); }
   if (keyword) {
     countSql += ' AND (u.name LIKE ? OR co.name LIKE ? OR c.certificate_no LIKE ?)';
     countParams.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);

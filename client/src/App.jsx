@@ -13,6 +13,7 @@ import PendingApprovals from './pages/enrollments/PendingApprovals.jsx'
 import ExamList from './pages/exams/ExamList.jsx'
 import ExamForm from './pages/exams/ExamForm.jsx'
 import TakeExam from './pages/exams/TakeExam.jsx'
+import ExamRecordDetail from './pages/exams/ExamRecordDetail.jsx'
 import MyExams from './pages/employee/MyExams.jsx'
 import CertificateList from './pages/certificates/CertificateList.jsx'
 import MyCertificates from './pages/employee/MyCertificates.jsx'
@@ -55,6 +56,7 @@ function App() {
           <Route path="exams/new" element={<ExamForm />} />
           <Route path="exams/:id/edit" element={<ExamForm />} />
           <Route path="exams/:id/take" element={<TakeExam />} />
+          <Route path="exam-records/:id" element={<ExamRecordDetail />} />
           <Route path="certificates" element={<CertificateList />} />
           <Route path="reports" element={<ReportList />} />
           <Route path="reports/summary" element={<ReportSummary />} />

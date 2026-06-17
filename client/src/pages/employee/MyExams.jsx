@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Table, Button, Tag, Card, Tabs, message, Modal, Descriptions } from 'antd'
-import { PlayCircleOutlined, EyeOutlined } from '@ant-design/icons'
+import { Table, Button, Tag, Card, Tabs, message } from 'antd'
+import { PlayCircleOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import request from '../../utils/request'
 
@@ -11,7 +11,6 @@ export default function MyExams() {
   const [examList, setExamList] = useState([])
   const [recordList, setRecordList] = useState([])
   const [activeTab, setActiveTab] = useState('available')
-  const [detailModal, setDetailModal] = useState({ open: false, record: null })
 
   useEffect(() => {
     if (activeTab === 'available') {
@@ -50,7 +49,7 @@ export default function MyExams() {
   }
 
   const handleViewRecord = (record) => {
-    setDetailModal({ open: true, record })
+    navigate(`/exam-records/${record.id}`)
   }
 
   const availableColumns = [
@@ -93,7 +92,7 @@ export default function MyExams() {
       key: 'action',
       width: 100,
       render: (_, r) => (
-        <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewRecord(r)}>
+        <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewRecord(r)} disabled={!r.submit_time}>
           详情
         </Button>
       )
@@ -109,6 +108,9 @@ export default function MyExams() {
     <div className="page-container">
       <div className="page-header">
         <h2 className="page-title">我的考试</h2>
+        {activeTab === 'record' && (
+          <Button icon={<ReloadOutlined />} onClick={loadExamRecords}>刷新</Button>
+        )}
       </div>
 
       <Card>
@@ -146,36 +148,6 @@ export default function MyExams() {
           />
         )}
       </Card>
-
-      <Modal
-        title="考试记录详情"
-        open={detailModal.open}
-        onCancel={() => setDetailModal({ open: false, record: null })}
-        footer={[
-          <Button key="close" onClick={() => setDetailModal({ open: false, record: null })}>关闭</Button>
-        ]}
-        width={600}
-      >
-        {detailModal.record && (
-          <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="考试名称">{detailModal.record.exam_name}</Descriptions.Item>
-            <Descriptions.Item label="课程名称">{detailModal.record.course_name}</Descriptions.Item>
-            <Descriptions.Item label="得分">
-              <span style={{ fontSize: 20, fontWeight: 'bold', color: detailModal.record.passed ? '#52c41a' : '#ff4d4f' }}>
-                {detailModal.record.score}
-              </span> 分
-            </Descriptions.Item>
-            <Descriptions.Item label="是否通过">
-              <Tag color={detailModal.record.passed ? 'green' : 'red'}>
-                {detailModal.record.passed ? '已通过' : '未通过'}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="用时">{detailModal.record.duration_used} 分钟</Descriptions.Item>
-            <Descriptions.Item label="开始时间">{detailModal.record.start_time}</Descriptions.Item>
-            <Descriptions.Item label="提交时间">{detailModal.record.submit_time}</Descriptions.Item>
-          </Descriptions>
-        )}
-      </Modal>
     </div>
   )
 }

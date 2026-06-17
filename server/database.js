@@ -221,6 +221,10 @@ function initDatabase() {
     );
   `);
 
+  try {
+    db.prepare('ALTER TABLE exam_records ADD COLUMN question_details TEXT').run();
+  } catch (e) {}
+
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   if (userCount === 0) {
     seedInitialData();

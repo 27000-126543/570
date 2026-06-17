@@ -221,14 +221,53 @@ router.post('/:id/submit', authMiddleware, roleMiddleware('employee'), (req, res
   const questions = JSON.parse(record.questions);
   let totalScore = 0;
   const correctAnswers = {};
+  const questionDetails = [];
   let correctCount = 0;
   let wrongCount = 0;
+
+  const normalizeAnswer = (ans, type) => {
+    if (type === 'multiple') {
+      let arr = [];
+      if (Array.isArray(ans)) {
+        arr = ans;
+      } else if (typeof ans === 'string' && ans) {
+        arr = ans.split(/[,，\s]+/).filter(Boolean);
+      }
+      return arr.map(s => String(s).toUpperCase().trim()).sort().join(',');
+    }
+    if (type === 'judge') {
+      const s = String(ans || '').toLowerCase().trim();
+      if (s === 'true' || s === '1' || s === 't' || s === '正确' || s === '对') return 'TRUE';
+      if (s === 'false' || s === '0' || s === 'f' || s === '错误' || s === '错') return 'FALSE';
+      return s.toUpperCase();
+    }
+    return String(ans || '').toUpperCase().trim();
+  };
 
   for (const q of questions) {
     const question = db.prepare('SELECT * FROM question_banks WHERE id = ?').get(q.id);
     correctAnswers[q.id] = question.answer;
-    const userAnswer = answers[q.id] || '';
-    if (userAnswer.toUpperCase() === question.answer.toUpperCase()) {
+
+    const userRaw = answers[q.id];
+    const correctNorm = normalizeAnswer(question.answer, question.type);
+    const userNorm = normalizeAnswer(userRaw, question.type);
+
+    const isEmpty = userRaw === undefined || userRaw === null ||
+      (Array.isArray(userRaw) && userRaw.length === 0) ||
+      (typeof userRaw === 'string' && !userRaw.trim());
+
+    questionDetails.push({
+      id: question.id,
+      question: question.question,
+      type: question.type,
+      options: question.options ? JSON.parse(question.options) : null,
+      score: question.score,
+      correct_answer: question.answer,
+      user_answer: userRaw,
+      is_correct: !isEmpty && userNorm === correctNorm
+    });
+
+    if (!isEmpty && userNorm === correctNorm) {
       totalScore += question.score;
       correctCount++;
     } else {
@@ -242,9 +281,9 @@ router.post('/:id/submit', authMiddleware, roleMiddleware('employee'), (req, res
   const durationUsed = Math.round((endTime - startTime) / 60000);
 
   db.prepare(`
-    UPDATE exam_records SET answers = ?, score = ?, passed = ?, submit_time = ?, duration_used = ?
+    UPDATE exam_records SET answers = ?, score = ?, passed = ?, submit_time = ?, duration_used = ?, question_details = ?
     WHERE id = ?
-  `).run(JSON.stringify(answers), totalScore, passed, formatDate(new Date()), durationUsed, recordId);
+  `).run(JSON.stringify(answers), totalScore, passed, formatDate(new Date()), durationUsed, JSON.stringify(questionDetails), recordId);
 
   if (passed) {
     const enrollment = db.prepare("SELECT * FROM enrollments WHERE user_id = ? AND course_id = ?")
@@ -279,6 +318,7 @@ router.post('/:id/submit', authMiddleware, roleMiddleware('employee'), (req, res
       passed: !!passed,
       correctAnswers,
       userAnswers: answers,
+      question_details: questionDetails,
       total_score: exam.total_score,
       pass_score: exam.pass_score,
       correct_count: correctCount,
@@ -297,6 +337,62 @@ router.get('/records/my', authMiddleware, (req, res) => {
   res.json({ code: 0, data: list });
 });
 
+router.get('/records/:id', authMiddleware, (req, res) => {
+  const record = db.prepare(`
+    SELECT er.*, e.name as exam_name, c.name as course_name,
+           e.total_score as exam_total_score, e.pass_score as exam_pass_score
+    FROM exam_records er
+    JOIN exams e ON er.exam_id = e.id
+    JOIN courses c ON er.course_id = c.id
+    WHERE er.id = ? AND er.user_id = ?
+  `).get(req.params.id, req.user.id);
+  if (!record) return res.status(404).json({ code: 404, message: '考试记录不存在' });
+
+  let questionDetails = [];
+  if (record.question_details) {
+    try {
+      questionDetails = JSON.parse(record.question_details);
+    } catch (e) {}
+  }
+  record.question_details = questionDetails;
+  if (record.answers) {
+    try {
+      record.answers = JSON.parse(record.answers);
+    } catch (e) {}
+  }
+
+  res.json({ code: 0, data: record });
+});
+
+router.get('/records/:id/trainer', authMiddleware, roleMiddleware('trainer'), (req, res) => {
+  const record = db.prepare(`
+    SELECT er.*, e.name as exam_name, c.name as course_name,
+           e.total_score as exam_total_score, e.pass_score as exam_pass_score,
+           u.name as user_name, u.department
+    FROM exam_records er
+    JOIN exams e ON er.exam_id = e.id
+    JOIN courses c ON er.course_id = c.id
+    JOIN users u ON er.user_id = u.id
+    WHERE er.id = ?
+  `).get(req.params.id);
+  if (!record) return res.status(404).json({ code: 404, message: '考试记录不存在' });
+
+  let questionDetails = [];
+  if (record.question_details) {
+    try {
+      questionDetails = JSON.parse(record.question_details);
+    } catch (e) {}
+  }
+  record.question_details = questionDetails;
+  if (record.answers) {
+    try {
+      record.answers = JSON.parse(record.answers);
+    } catch (e) {}
+  }
+
+  res.json({ code: 0, data: record });
+});
+
 router.get('/records/exam/:examId', authMiddleware, roleMiddleware('trainer'), (req, res) => {
   const list = db.prepare(`
     SELECT er.*, u.name as user_name, u.department, e.name as exam_name
@@ -305,6 +401,22 @@ router.get('/records/exam/:examId', authMiddleware, roleMiddleware('trainer'), (
     JOIN exams e ON er.exam_id = e.id
     WHERE er.exam_id = ? AND er.submit_time IS NOT NULL ORDER BY er.score DESC
   `).all(req.params.examId);
+  res.json({ code: 0, data: list });
+});
+
+router.get('/records/passed/list', authMiddleware, roleMiddleware('trainer'), (req, res) => {
+  const list = db.prepare(`
+    SELECT er.id, er.score, er.passed, er.submit_time,
+           u.id as user_id, u.name as user_name, u.department, u.username,
+           e.name as exam_name, c.id as course_id, c.name as course_name,
+           (SELECT COUNT(*) FROM certificates cf WHERE cf.exam_record_id = er.id) as cert_exists
+    FROM exam_records er
+    JOIN users u ON er.user_id = u.id
+    JOIN exams e ON er.exam_id = e.id
+    JOIN courses c ON er.course_id = c.id
+    WHERE er.passed = 1 AND er.submit_time IS NOT NULL
+    ORDER BY er.submit_time DESC
+  `).all();
   res.json({ code: 0, data: list });
 });
 
